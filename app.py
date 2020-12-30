@@ -96,7 +96,7 @@ def show_output(url):
 
 
 @app.route("/check_sync/<url>", methods=['POST'])
-def show_output(url):
+def get_sync(url):
     if not request.json or not 'output' in request.json:
         return abort(400, 'My custom message')
 
@@ -109,7 +109,7 @@ def show_output(url):
 
 
 @app.route("/check_sync/<url>", methods=['GET'])
-def show_output(url):
+def show_sync(url):
     if channels[url].ready:
         return jsonify({
             'output' : {
