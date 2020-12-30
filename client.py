@@ -9,7 +9,7 @@ class tpm_test:
 
     def __init__(self):
         self.user = None
-        self.url = 'https://tpmserver.herokuapp.com/' #"http://127.0.0.1:5000"
+        self.url = 'https://tpmserver.herokuapp.com' #"http://127.0.0.1:5000"
         self.secret = None
         self.tpm = TPM(16, 16, 100)
         self.n = 200
