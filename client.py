@@ -9,20 +9,26 @@ class tpm_test:
 
     def __init__(self):
         self.user = None
-        self.url = "http://127.0.0.1:5000"
+        self.url = 'https://tpmserver.herokuapp.com/' #"http://127.0.0.1:5000"
         self.secret = None
         self.tpm = TPM(16, 16, 100)
         self.n = 200
+        self.IsSync = False
 
     def synchronize(self):
 
         for i in range(self.n):
-            time.sleep(0.5)
+            time.sleep(0.2)
             self.update_weights()
-            time.sleep(0.5)
+            time.sleep(0.2)
             self.send_output()
-            time.sleep(0.5)
+            time.sleep(0.2)
             self.get_output()
+            time.sleep(0.2)
+            self.check_sync()
+
+            if self.IsSync:
+                print('Machines synced!')
 
     def pair(self, keyword):
         obj = {"keyword" : keyword}
@@ -52,7 +58,6 @@ class tpm_test:
             'output': self.tpm.out,
             'user': self.user
             }
-        # response = requests.post(self.url + '/receive_output/' + self.secret, json = obj)
 
         response = self.checkResponse(requests.post, self.url + '/receive_output/' + self.secret, obj, 100)
 
@@ -68,6 +73,21 @@ class tpm_test:
             self.tpm.update_weigths(json_['output']['A'])
 
         return response# .json()
+
+    def check_sync(self):
+        obj = {
+            'output' : self.tpm.chaosmap(),
+            'user' : self.user
+        }
+
+        response = self.checkResponse(requests.post, self.url + '/check_sync/' + self.secret, obj, 200)
+        response = self.checkResponse(requests.get, self.url + '/check_sync/' + self.secret, None, 200)
+
+        json_ = response.json()
+        if json_['output']['A'] == json_['output']['B']:
+            print('comparing weights')
+            print(json_)
+            self.IsSync = True
 
 
     def checkResponse(self, request_, url_, obj_, time_):
@@ -86,7 +106,6 @@ class tpm_test:
                 print('request reached')
                 #break
                 return response
-
 
 
 
@@ -124,7 +143,8 @@ class TPM:
             for j in range(self.n):
                 self.weights[i][j] += self.X[i][j] * self.out * self.isequal(self.out, self.H[i]) * self.isequal(self.out, outputB)
                 self.weights[i][j] = self.g(self.weights[i][j])
-                #print(weight[i])
+
+
     def isequal(self, A, B):
         if A==B:
             return 1.0
@@ -132,19 +152,25 @@ class TPM:
             return 0.0
 
     def g(self, w):
-
         if w > self.l:
             return self.l
-
         if w < -self.l:
             return -self.l
-
         else:
             return w
 
+    def chaosmap(self):
+        r = sum(list(np.hstack(self.weights)))
+        rr = sum(abs(x) for x in (list(np.hstack(self.weights))))
+        t = abs(r) / rr
+        x = t
+        for i in range(rr):
+            x = (3.6 + t/2)* x *(1 - x)
+        return x
+
+
+
 if __name__ == "__main__":
     instance = tpm_test()
-
     instance.pair(sys.argv[1])
     instance.synchronize()
-    

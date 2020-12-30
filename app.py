@@ -16,16 +16,8 @@ def get_random_url():
     result_str = ''.join(random.choice(letters) for i in range(32))
     return result_str
 
-keywords = {
-    "test_channel" : "sdkafjhasdkfnv"
-}
-
-channels = {
-    "test_channel" : {
-        "url": "sdkafjhasdkfnv",
-        "users": 0,
-    }
-}
+keywords = {}
+channels = {}
 
 
 @app.route('/pair', methods=['POST'])
@@ -103,6 +95,31 @@ def show_output(url):
         return abort(400, 'My custom message') #'300'
 
 
+@app.route("/check_sync/<url>", methods=['POST'])
+def show_output(url):
+    if not request.json or not 'output' in request.json:
+        return abort(400, 'My custom message')
+
+    if request.json['user'] == "A":
+        channels[url].chaosA = request.json['output']
+    else:
+        channels[url].chaosB = request.json['output']
+
+    return 'received'
+
+
+@app.route("/check_sync/<url>", methods=['GET'])
+def show_output(url):
+    if channels[url].ready:
+        return jsonify({
+            'output' : {
+                'A': channels[url].chaosA,
+                'B': channels[url].chaosB
+                }
+            })
+    else:
+        return abort(400, 'My custom message')
+
 
 if __name__ == '__main__':
     app.run(debug=True)
@@ -122,15 +139,14 @@ class TPMSync:
         self.url = "sdkafjhasdkfnv"
         self.ready = False
 
+        self.chaosA = 0.0
+        self.chaosB = 0.0
+
         self.L = l_
         self.K = k_
         self.N = n_
 
         self.vec = self.rand_vec()
-
-    def update_output(self):
-        pass
-
 
     def rand_vec(self):
         p = []
