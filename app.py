@@ -5,6 +5,7 @@ import pickle
 
 pickle.dump({}, open("users.p", "wb"))
 pickle.dump({}, open("channels.p", "wb"))
+
 app = Flask(__name__)
 socketio = SocketIO(app)
 
