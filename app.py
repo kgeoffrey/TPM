@@ -1,161 +1,131 @@
-from flask import Flask, jsonify, request, abort
-import numpy as np
-import random
-import string
+from flask import Flask, request
+from flask_socketio import SocketIO, join_room, leave_room, send, emit, disconnect
+import pickle
 
+
+pickle.dump({}, open("users.p", "wb"))
+pickle.dump({}, open("channels.p", "wb"))
 app = Flask(__name__)
+socketio = SocketIO(app)
 
 K = 16
 L = 100
 N = 16
 
+@socketio.on("connect")
+def connect():
+    print("client wants to connect")
+    emit("status", { "message": "Connected. Hello!" })
 
-def get_random_url():
-    # Random string with the combination of lower and upper case
-    letters = string.ascii_letters
-    result_str = ''.join(random.choice(letters) for i in range(32))
-    return result_str
+@socketio.on('join')
+def on_join(data):
+    channels = pickle.load(open("channels.p", "rb"))
+    users = pickle.load(open("users.p", "rb"))
 
-keywords = {}
-channels = {}
-
-
-@app.route('/pair', methods=['POST'])
-def create_channel():
-    if not request.json or not 'keyword' in request.json:
-        abort(400)
-
-    if request.json['keyword'] in keywords.keys():
-        if keywords[request.json['keyword']]["users"] == 2:
-            # abort(400)
-            return 500 #"channel is already full"
+    if data['channel'] in channels.keys():
+        if channels[data['channel']].num_users == 2:
+            emit("status", { "message": "Channel is full, connect to other channel" })
+            disconnect(request.sid)
         else:
-            keywords[request.json['keyword']]["users"] += 1
-            return jsonify({
-                'user': 'B',
-                'url': keywords[request.json['keyword']]["url"]
-                })
+            users[request.sid] = data['channel']
+            join_room(data['channel'])
+            channels[data['channel']].num_users += 1
+            channels[data['channel']].BSid = request.sid
+            pickle.dump(channels, open("channels.p", "wb"))
+            pickle.dump(users, open("users.p", "wb"))
+            print('sid of B is ' + request.sid)
+            emit("status",
+                {
+                "message": "Connected to channel as Bob, room is full",
+                'assign Bob': 'B',
+                'channel': data['channel'],
+                'start' : 'yes',
+                'ASid': channels[data['channel']].ASid,
+                'BSid': channels[data['channel']].BSid
+                },
+                room = data['channel'],
+            )
 
     else:
-        keywords[request.json['keyword']] = {
-            "users" : 1,
-            "url" : get_random_url()
+        users[request.sid] = data['channel']
+        join_room(data['channel'])
+        channels[data['channel']] = TPMSync(L, K, N)
+        channels[data['channel']].num_users += 1
+        channels[data['channel']].ASid = request.sid
+        print('sid of A is ' + request.sid)
+        pickle.dump(channels, open("channels.p", "wb"))
+        pickle.dump(users, open("users.p", "wb"))
+        emit("status",
+            {
+            "message": "Connected to channel as Alice",
+            'assign Alice': 'A'
+            }
+        )
+
+
+@socketio.on("disconnect")
+def disconnecting():
+    channels = pickle.load(open("channels.p", "rb"))
+    users = pickle.load(open("users.p", "rb"))
+
+    if request.sid in users.keys():
+        channel = channels[users[request.sid]]
+
+        if users[request.sid] in channels.keys():
+            channels.pop(users[request.sid])
+            print("Closed channel")
+        if channel.ASid in users.keys():
+            disconnect(channel.ASid)
+            users.pop(channel.ASid)
+        if channel.BSid in users.keys():
+            disconnect(channel.BSid)
+            users.pop(channel.BSid)
+
+        pickle.dump(channels, open("channels.p", "wb"))
+        pickle.dump(users, open("users.p", "wb"))
+
+
+@socketio.on('my message')
+def handle_message(data):
+    print("wow message received!" + data)
+
+@socketio.on('weights')
+def handle_message(data):
+    msg = {
+        'vector': data['vector'],
+        'output': data['output']
         }
+    emit('get_weights', msg, room = data['sid'])
+    print("wow message received, vector")
 
-        channels[keywords[request.json['keyword']]["url"]] = TPMSync(L, K, N)
-
-        return jsonify({
-            'user': 'A',
-            'url': keywords[request.json['keyword']]["url"]
-            })
-
-
-@app.route("/weights/<url>", methods=['GET'])
-def get_weights(url):
-    channels[url].ready = False
-    te = [x.tolist() for x in channels[url].vec]
-    return jsonify({'random_vector': te}) #, 201
+@socketio.on('send_output')
+def handle_message(data):
+    emit('output_received', data, room = data['sid'])
+    print("wow message received!, output")
 
 
-@app.route("/receive_output/<url>", methods=['POST'])
-def receive_output(url):
-    if not request.json or not 'output' in request.json:
-        return 400
+@socketio.on('send_chaos_output')
+def handle_message(data):
+    emit('receive_chaos_output', data, room = data['sid'])
+    print("wow message received!, chaos")
 
-    if request.json['user'] == "A":
-        channels[url].OutA = request.json['output']
-        channels[url].UserAReady = True
-        print("received")
-    else:
-        channels[url].OutB = request.json['output']
-        channels[url].UserBReady = True
-        print("received")
-
-    if channels[url].UserAReady and channels[url].UserBReady:
-        channels[url].ready = True
-
-    if channels[url].ready:
-        channels[url].UserAReady = False
-        channels[url].UserBReady = False
-        channels[url].update_vec()
-
-    return "OK"
-
-
-@app.route("/show_output/<url>", methods=['GET'])
-def show_output(url):
-    if channels[url].ready:
-        return jsonify({
-            'output' : {
-                'A': channels[url].OutA,
-                'B': channels[url].OutB
-                }
-            })
-    else:
-        return abort(400, 'My custom message') #'300'
-
-
-@app.route("/check_sync/<url>", methods=['POST'])
-def get_sync(url):
-    if not request.json or not 'output' in request.json:
-        return abort(400, 'My custom message')
-
-    if request.json['user'] == "A":
-        channels[url].chaosA = request.json['output']
-    else:
-        channels[url].chaosB = request.json['output']
-
-    return 'received'
-
-
-@app.route("/check_sync/<url>", methods=['GET'])
-def show_sync(url):
-    if channels[url].ready:
-        return jsonify({
-            'output' : {
-                'A': channels[url].chaosA,
-                'B': channels[url].chaosB
-                }
-            })
-    else:
-        return abort(400, 'My custom message')
-
-
-if __name__ == '__main__':
-    app.run(debug=True)
-
-
-
+@socketio.on('confirm_chaos_output')
+def handle_message(data):
+    emit('receive_chaos_output2', data, room = data['sid'])
+    print("wow message received!, chaos")
 
 
 class TPMSync:
 
     def __init__(self, l_, k_, n_):
-        self.num_users = 1
-        self.OutA = None
-        self.OutB = None
-        self.UserAReady = False
-        self.UserBReady = False
-        self.url = "sdkafjhasdkfnv"
-        self.ready = False
-
-        self.chaosA = 0.0
-        self.chaosB = 0.0
+        self.num_users = 0.0
+        self.ASid = None
+        self.BSid = None
 
         self.L = l_
         self.K = k_
         self.N = n_
 
-        self.vec = self.rand_vec()
 
-    def rand_vec(self):
-        p = []
-        for i in range(self.K):
-            p.append(np.random.randint(-self.L, self.L, size=self.N))
-        return p
-
-    def update_vec(self):
-        p = []
-        for i in range(self.K):
-            p.append(np.random.randint(-self.L, self.L, size=self.N))
-        self.vec = p
+if __name__ == '__main__':
+    socketio.run(app, debug=True)

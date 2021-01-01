@@ -1,116 +1,138 @@
-import time
+# from socketIO_client import SocketIO, LoggingNamespace
+import sys
+import socketio
 import numpy as np
 import math
-import sys
-import requests
+from random import randrange
 
 
-class tpm_test:
+sio = socketio.Client()
 
+
+@sio.on('receive_chaos_output2')
+def on_message(msg):
+    if msg['output'] == tpmclient.tpm.chaosmap():
+        tpmclient.IsSync = True
+        print('SUCCESSFULLY synched with Bob')
+        sio.disconnect()
+
+@sio.on('receive_chaos_output')
+def on_message(msg):
+    sio.emit('confirm_chaos_output',
+        {
+            'msg':'sending chaos output',
+            'output': tpmclient.tpm.chaosmap(),
+            'sid': tpmclient.partner_sid
+        }
+    )
+
+    if msg['output'] == tpmclient.tpm.chaosmap():
+        tpmclient.IsSync = True
+        print('SUCCESSFULLY synched with Alice')
+        sio.disconnect()
+
+
+@sio.on('output_received')
+def on_message(msg):
+    if tpmclient.tpm.out == msg['output']:
+        tpmclient.tpm.update_weights(msg['output'])
+
+    if tpmclient.n >= 200:
+        if tpmclient.n  % 10 == 0:
+            tpmclient.send_chaos_output()
+
+    if not tpmclient.IsSync:
+        tpmclient.send_vector_and_output()
+        print("output received", + msg['output'])
+
+@sio.on('get_weights')
+def on_message(msg):
+    vector = msg['vector']
+    list_vec = [np.array(vector[x:x+16]) for x in range(0, len(vector), 16)]
+    tpmclient.receive_vector(list_vec)
+    tpmclient.send_output()
+    if tpmclient.tpm.out == msg['output']:
+        tpmclient.tpm.update_weights(msg['output'])
+    print("output received", + msg['output'])
+
+@sio.on('status')
+def on_message(msg):
+    if 'assign Alice' in msg:
+        tpmclient.user = msg['assign Alice']
+    if 'assign Bob' in msg and not tpmclient.user:
+        tpmclient.user = msg['assign Bob']
+    if 'start' in msg:
+        if tpmclient.user == 'A':
+            tpmclient.partner_sid = msg["BSid"]
+            print(' B sid is ' + tpmclient.partner_sid)
+            tpmclient.send_vector_and_output()
+        else:
+            tpmclient.partner_sid = msg["ASid"]
+            print(' A sid is ' + tpmclient.partner_sid)
+
+        print('My partners sid is: ' + tpmclient.partner_sid)
+
+    print('message from server: ' + msg['message'])
+
+@sio.event
+def connect():
+    sio.emit('my message', " FU", namespace='/')
+    sio.emit('join', {'channel': CHANNEL}, namespace='/')
+    print("connected to server!")
+
+
+class TPMClient:
     def __init__(self):
         self.user = None
-        self.url = 'https://tpmserver.herokuapp.com' #"http://127.0.0.1:5000"
-        self.secret = None
         self.tpm = TPM(16, 16, 100)
-        self.n = 200
+        self.n = 0
         self.IsSync = False
 
-    def synchronize(self):
+    def send_vector_and_output(self):
+        vector = self.rand_vec()
+        list_vec = [np.array(vector[x:x+16]) for x in range(0, len(vector), 16)]
+        self.tpm.get_output(list_vec)
 
-        for i in range(self.n):
-            time.sleep(0.2)
-            self.update_weights()
-            time.sleep(0.2)
-            self.send_output()
-            time.sleep(0.2)
-            self.get_output()
-            time.sleep(0.2)
-            self.check_sync()
+        sio.emit('weights',
+            {
+                'msg':'sending random vector and output',
+                'vector': vector,
+                'output': self.tpm.out,
+                'sid': tpmclient.partner_sid
+            }
+        )
+        self.n += 1
 
-            if self.IsSync:
-                print('Machines synced!')
-
-    def pair(self, keyword):
-        obj = {"keyword" : keyword}
-
-        response = self.checkResponse(requests.post, self.url + "/pair", obj, 100)
-        response = response.json()
-
-        self.secret = response["url"]
-        self.user = response["user"]
-        #return response
-
-    def update_weights(self):
-
-        #response = requests.get(self.url + '/weights/' + self.secret)
-
-        response = self.checkResponse(requests.get, self.url + '/weights/' + self.secret, None, 100)
-        json = response.json()
-
-        vec = [np.array(x) for x in json['random_vector']]
+    def receive_vector(self, vector_):
+        vec = [np.array(x) for x in vector_]
         self.tpm.get_output(vec)
 
-        return response
-
+    def rand_vec(self):
+        l = []
+        for i in range(256):
+            l.append(randrange(-100, 100))
+        return l
 
     def send_output(self):
-        obj = {
-            'output': self.tpm.out,
-            'user': self.user
+        sio.emit('send_output',
+            {
+                'msg':'sending output',
+                'output': self.tpm.out,
+                'sid': tpmclient.partner_sid
             }
+        )
 
-        response = self.checkResponse(requests.post, self.url + '/receive_output/' + self.secret, obj, 100)
-
-
-    def get_output(self):
-        #url = "http://127.0.0.1:5000/show_output/" + secret
-        response = self.checkResponse(requests.get, self.url + '/show_output/' + self.secret, None, 500)
-        #response = requests.get(self.url + '/show_output/' + self.secret)
-        json_ = response.json()
-        print(json_)
-        if json_['output']['A'] == json_['output']['B']:
-            print('updating weights!')
-            self.tpm.update_weigths(json_['output']['A'])
-
-        return response# .json()
-
-    def check_sync(self):
-        obj = {
-            'output' : self.tpm.chaosmap(),
-            'user' : self.user
-        }
-
-        response = self.checkResponse(requests.post, self.url + '/check_sync/' + self.secret, obj, 200)
-        response = self.checkResponse(requests.get, self.url + '/check_sync/' + self.secret, None, 200)
-
-        json_ = response.json()
-        if json_['output']['A'] == json_['output']['B']:
-            print('comparing weights')
-            print(json_)
-            self.IsSync = True
-
-
-    def checkResponse(self, request_, url_, obj_, time_):
-        timer = 0
-        status = None # request_(url_, json =  obj_)
-
-        while status != 200:
-            time.sleep(0.1)
-            timer += 1
-            response = request_(url_, json = obj_)
-            status = response.status_code
-            if timer > time_:
-                print('request timed out')
-                break
-            if response.status_code == 200:
-                print('request reached')
-                #break
-                return response
-
+    def send_chaos_output(self):
+        sio.emit('send_chaos_output',
+            {
+                'msg':'sending chaos output',
+                'output': self.tpm.chaosmap(),
+                'sid': tpmclient.partner_sid
+            }
+        )
 
 
 class TPM:
-
     def __init__(self, k_, n_, l_):
         self.k = k_
         self.n = n_
@@ -138,12 +160,11 @@ class TPM:
     def signum(self, x):
         return math.copysign(1, x)
 
-    def update_weigths(self, outputB):
+    def update_weights(self, outputB):
         for i in range(self.k):
             for j in range(self.n):
                 self.weights[i][j] += self.X[i][j] * self.out * self.isequal(self.out, self.H[i]) * self.isequal(self.out, outputB)
                 self.weights[i][j] = self.g(self.weights[i][j])
-
 
     def isequal(self, A, B):
         if A==B:
@@ -161,16 +182,16 @@ class TPM:
 
     def chaosmap(self):
         r = sum(list(np.hstack(self.weights)))
-        rr = sum(abs(x) for x in (list(np.hstack(self.weights))))
-        t = abs(r) / rr
+
+        rr = sum([abs(x) for x in (list(np.hstack(self.weights)))])
+
+        t = float(abs(r)) / float(rr)
         x = t
         for i in range(rr):
             x = (3.6 + t/2)* x *(1 - x)
         return x
 
-
-
 if __name__ == "__main__":
-    instance = tpm_test()
-    instance.pair(sys.argv[1])
-    instance.synchronize()
+    CHANNEL = sys.argv[1]
+    tpmclient = TPMClient()
+    sio.connect('http://localhost:5000')
