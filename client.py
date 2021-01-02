@@ -240,5 +240,5 @@ if __name__ == "__main__":
     CHANNEL = sys.argv[1]
     tpmclient = TPMClient()
     animation = Animation()
-    # sio.connect('https://tpmserver.herokuapp.com/')
-    sio.connect('http://localhost:5000')
+    sio.connect('https://tpmserver.herokuapp.com/')
+    # sio.connect('http://localhost:5000')
