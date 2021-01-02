@@ -15,6 +15,9 @@ def on_message(msg):
         tpmclient.IsSync = True
         print('SUCCESSFULLY synched with Bob')
         sio.disconnect()
+        tpmclient.save_key()
+
+        # save key to KEYS
 
 @sio.on('receive_chaos_output')
 def on_message(msg):
@@ -30,6 +33,9 @@ def on_message(msg):
         tpmclient.IsSync = True
         print('SUCCESSFULLY synched with Alice')
         sio.disconnect()
+        tpmclient.save_key()
+
+        # save key to KEYS
 
 
 @sio.on('output_received')
@@ -43,17 +49,22 @@ def on_message(msg):
 
     if not tpmclient.IsSync:
         tpmclient.send_vector_and_output()
-        print("output received", + msg['output'])
+        # print("output received", + msg['output'])
+        animation.update()
 
 @sio.on('get_weights')
 def on_message(msg):
-    vector = msg['vector']
-    list_vec = [np.array(vector[x:x+16]) for x in range(0, len(vector), 16)]
-    tpmclient.receive_vector(list_vec)
-    tpmclient.send_output()
-    if tpmclient.tpm.out == msg['output']:
-        tpmclient.tpm.update_weights(msg['output'])
-    print("output received", + msg['output'])
+    try:
+        vector = msg['vector']
+        list_vec = [np.array(vector[x:x+16]) for x in range(0, len(vector), 16)]
+        tpmclient.receive_vector(list_vec)
+        tpmclient.send_output()
+        if tpmclient.tpm.out == msg['output']:
+            tpmclient.tpm.update_weights(msg['output'])
+        # print("output received", + msg['output'])
+        animation.update()
+    except socketio.exceptions.BadNamespaceError:
+        pass
 
 @sio.on('status')
 def on_message(msg):
@@ -131,6 +142,12 @@ class TPMClient:
             }
         )
 
+    def save_key(self):
+        re = [abs(item+155) for sublist in self.tpm.weights for item in sublist]
+        key = bytes(abs(x) for x in re).decode('cp437')
+        with open("KEYS/{}.txt".format(CHANNEL), "w") as text_file:
+            print(key, file=text_file)
+
 
 class TPM:
     def __init__(self, k_, n_, l_):
@@ -191,8 +208,37 @@ class TPM:
             x = (3.6 + t/2)* x *(1 - x)
         return x
 
+
+class Animation:
+    def __init__(self):
+        self.animation = [
+                        "[        ]",
+                        "[=       ]",
+                        "[===     ]",
+                        "[====    ]",
+                        "[=====   ]",
+                        "[======  ]",
+                        "[======= ]",
+                        "[========]",
+                        "[ =======]",
+                        "[  ======]",
+                        "[   =====]",
+                        "[    ====]",
+                        "[     ===]",
+                        "[      ==]",
+                        "[       =]",
+                        "[        ]",
+                        "[        ]"]
+        self.i = 0
+        self.timer = None
+
+    def update(self):
+        print(self.animation[self.i % len(self.animation)], end='\r')
+        self.i += 1
+
 if __name__ == "__main__":
     CHANNEL = sys.argv[1]
     tpmclient = TPMClient()
-    sio.connect('https://tpmserver.herokuapp.com/')
-    #sio.connect('http://localhost:5000')
+    animation = Animation()
+    # sio.connect('https://tpmserver.herokuapp.com/')
+    sio.connect('http://localhost:5000')
