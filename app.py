@@ -88,7 +88,7 @@ def disconnecting():
 
 @socketio.on('my message')
 def handle_message(data):
-    print("wow message received!" + data)
+    print("Message from client" + data)
 
 @socketio.on('weights')
 def handle_message(data):
@@ -97,23 +97,23 @@ def handle_message(data):
         'output': data['output']
         }
     emit('get_weights', msg, room = data['sid'])
-    print("wow message received, vector")
+    print("Received weights")
 
 @socketio.on('send_output')
 def handle_message(data):
     emit('output_received', data, room = data['sid'])
-    print("wow message received!, output")
+    print("Received output: " + str(data['output']))
 
 
 @socketio.on('send_chaos_output')
 def handle_message(data):
     emit('receive_chaos_output', data, room = data['sid'])
-    print("wow message received!, chaos")
+    print(" First Chaotic Map output: " + str(data['output']))
 
 @socketio.on('confirm_chaos_output')
 def handle_message(data):
     emit('receive_chaos_output2', data, room = data['sid'])
-    print("wow message received!, chaos")
+    print("Second Chaotic Map output: " + str(data['output']))
 
 
 class TPMSync:

@@ -13,7 +13,7 @@ sio = socketio.Client()
 def on_message(msg):
     if msg['output'] == tpmclient.tpm.chaosmap():
         tpmclient.IsSync = True
-        print('SUCCESSFULLY synched with Bob')
+        print('SUCCESS: synched with Bob')
         sio.disconnect()
         tpmclient.save_key()
 
@@ -31,7 +31,7 @@ def on_message(msg):
 
     if msg['output'] == tpmclient.tpm.chaosmap():
         tpmclient.IsSync = True
-        print('SUCCESSFULLY synched with Alice')
+        print('SUCCESS: synched with Alice')
         sio.disconnect()
         tpmclient.save_key()
 
@@ -75,21 +75,21 @@ def on_message(msg):
     if 'start' in msg:
         if tpmclient.user == 'A':
             tpmclient.partner_sid = msg["BSid"]
-            print(' B sid is ' + tpmclient.partner_sid)
+            # print(' B sid is ' + tpmclient.partner_sid)
             tpmclient.send_vector_and_output()
         else:
             tpmclient.partner_sid = msg["ASid"]
-            print(' A sid is ' + tpmclient.partner_sid)
+            # print(' A sid is ' + tpmclient.partner_sid)
 
-        print('My partners sid is: ' + tpmclient.partner_sid)
+        print("Partner's sid is: " + tpmclient.partner_sid)
 
-    print('message from server: ' + msg['message'])
+    # print('message from server: ' + msg['message'])
 
 @sio.event
 def connect():
-    sio.emit('my message', " FU", namespace='/')
+    sio.emit('my message', " Client connected", namespace='/')
     sio.emit('join', {'channel': CHANNEL}, namespace='/')
-    print("connected to server!")
+    print("Connected to server")
 
 
 class TPMClient:
@@ -212,23 +212,23 @@ class TPM:
 class Animation:
     def __init__(self):
         self.animation = [
-                        "[        ]",
-                        "[=       ]",
-                        "[===     ]",
-                        "[====    ]",
-                        "[=====   ]",
-                        "[======  ]",
-                        "[======= ]",
-                        "[========]",
-                        "[ =======]",
-                        "[  ======]",
-                        "[   =====]",
-                        "[    ====]",
-                        "[     ===]",
-                        "[      ==]",
-                        "[       =]",
-                        "[        ]",
-                        "[        ]"]
+                        "Synchronizing   [        ]",
+                        "Synchronizing   [=       ]",
+                        "Synchronizing   [===     ]",
+                        "Synchronizing   [====    ]",
+                        "Synchronizing.  [=====   ]",
+                        "Synchronizing.  [======  ]",
+                        "Synchronizing.  [======= ]",
+                        "Synchronizing.  [========]",
+                        "Synchronizing.. [ =======]",
+                        "Synchronizing.. [  ======]",
+                        "Synchronizing.. [   =====]",
+                        "Synchronizing.. [    ====]",
+                        "Synchronizing...[     ===]",
+                        "Synchronizing...[      ==]",
+                        "Synchronizing...[       =]",
+                        "Synchronizing...[        ]",
+                        "Synchronizing   [        ]"]
         self.i = 0
         self.timer = None
 
@@ -240,5 +240,5 @@ if __name__ == "__main__":
     CHANNEL = sys.argv[1]
     tpmclient = TPMClient()
     animation = Animation()
-    sio.connect('https://tpmserver.herokuapp.com/')
-    # sio.connect('http://localhost:5000')
+    # sio.connect('https://tpmserver.herokuapp.com/')
+    sio.connect('http://localhost:5000')
